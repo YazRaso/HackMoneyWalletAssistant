@@ -15,11 +15,11 @@ import { ensSwapAbi, erc20Abi } from "@/lib/abi";
 
 const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}`;
 
-const TOKENS: { label: string; address: string }[] = [
-  { label: "USDC", address: process.env.NEXT_PUBLIC_TOKEN_IN ?? "" },
-  { label: "DAI", address: process.env.NEXT_PUBLIC_TOKEN_OUT ?? "" },
-  { label: "WETH", address: "0xfff9976782d46cc05630d1f6ebab18b2324d6b14" },
-];
+const TOKENS = [
+  { label: "WETH", address: process.env.NEXT_PUBLIC_TOKEN_IN ?? "", decimals: 18 },
+  { label: "UNI", address: process.env.NEXT_PUBLIC_TOKEN_OUT ?? "", decimals: 18 },
+  { label: "USDC", address: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", decimals: 6 },
+] as const;
 
 const FEE_TIERS = [
   { label: "0.05%", value: 500 },
@@ -37,6 +37,10 @@ export default function Home() {
   const [amount, setAmount] = useState("");
   const [feeTier, setFeeTier] = useState(3000);
   const [slippage, setSlippage] = useState("50");
+  const [localError, setLocalError] = useState("");
+
+  const tokenInDecimals =
+    TOKENS.find((t) => t.address === tokenIn)?.decimals ?? 18;
 
   // ENS resolution
   const normalizedName = ensQuery ? normalize(ensQuery) : undefined;
@@ -91,28 +95,38 @@ export default function Home() {
 
   function handleApprove() {
     if (!amount) return;
-    approve({
-      address: tokenIn as `0x${string}`,
-      abi: erc20Abi,
-      functionName: "approve",
-      args: [CONTRACT_ADDRESS, parseUnits(amount, 18)],
-    });
+    setLocalError("");
+    try {
+      approve({
+        address: tokenIn as `0x${string}`,
+        abi: erc20Abi,
+        functionName: "approve",
+        args: [CONTRACT_ADDRESS, parseUnits(amount, tokenInDecimals)],
+      });
+    } catch (e) {
+      setLocalError(e instanceof Error ? e.message : "Invalid input");
+    }
   }
 
   function handleSwap() {
     if (!amount) return;
-    swap({
-      address: CONTRACT_ADDRESS,
-      abi: ensSwapAbi,
-      functionName: "swap",
-      args: [
-        tokenIn as `0x${string}`,
-        tokenOut as `0x${string}`,
-        parseUnits(amount, 18),
-        feeTier,
-        BigInt(slippage),
-      ],
-    });
+    setLocalError("");
+    try {
+      swap({
+        address: CONTRACT_ADDRESS,
+        abi: ensSwapAbi,
+        functionName: "swap",
+        args: [
+          tokenIn as `0x${string}`,
+          tokenOut as `0x${string}`,
+          parseUnits(amount, tokenInDecimals),
+          feeTier,
+          BigInt(slippage),
+        ],
+      });
+    } catch (e) {
+      setLocalError(e instanceof Error ? e.message : "Invalid input");
+    }
   }
 
   return (
@@ -290,10 +304,11 @@ export default function Home() {
               </div>
 
               {/* Error Display */}
-              {(approveError || swapError) && (
+              {(approveError || swapError || localError) && (
                 <div className="mt-2 rounded-lg bg-red-50 p-3 dark:bg-red-950">
                   <p className="text-xs font-medium text-red-600 dark:text-red-400">
-                    {(approveError || swapError)?.message?.split("\n")[0]}
+                    {localError ||
+                      (approveError || swapError)?.message?.split("\n")[0]}
                   </p>
                 </div>
               )}
